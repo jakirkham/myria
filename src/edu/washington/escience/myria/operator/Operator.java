@@ -17,6 +17,7 @@ import edu.washington.escience.myria.DbException;
 import edu.washington.escience.myria.MyriaConstants;
 import edu.washington.escience.myria.MyriaConstants.ProfilingMode;
 import edu.washington.escience.myria.Schema;
+import edu.washington.escience.myria.Type;
 import edu.washington.escience.myria.parallel.LocalFragment;
 import edu.washington.escience.myria.parallel.LocalFragmentResourceManager;
 import edu.washington.escience.myria.parallel.LocalSubQuery;
@@ -27,14 +28,14 @@ import edu.washington.escience.myria.storage.TupleBatch;
 
 /**
  * Abstract class for implementing operators.
- * 
+ *
  * @author slxu
- * 
+ *
  *         Currently, the operator api design requires that each single operator instance should be executed within a
  *         single thread.
- * 
+ *
  *         No multi-thread synchronization is considered.
- * 
+ *
  */
 public abstract class Operator implements Serializable {
 
@@ -110,8 +111,11 @@ public abstract class Operator implements Serializable {
    * @return return subquery id.
    */
   public SubQueryId getSubQueryId() {
-    return ((LocalFragmentResourceManager) execEnvVars.get(MyriaConstants.EXEC_ENV_VAR_FRAGMENT_RESOURCE_MANAGER))
-        .getFragment().getLocalSubQuery().getSubQueryId();
+    return ((LocalFragmentResourceManager)
+            execEnvVars.get(MyriaConstants.EXEC_ENV_VAR_FRAGMENT_RESOURCE_MANAGER))
+        .getFragment()
+        .getLocalSubQuery()
+        .getSubQueryId();
   }
 
   /**
@@ -133,7 +137,8 @@ public abstract class Operator implements Serializable {
     if (execEnvVars == null) {
       return null;
     } else {
-      return ((LocalFragmentResourceManager) execEnvVars.get(MyriaConstants.EXEC_ENV_VAR_FRAGMENT_RESOURCE_MANAGER))
+      return ((LocalFragmentResourceManager)
+              execEnvVars.get(MyriaConstants.EXEC_ENV_VAR_FRAGMENT_RESOURCE_MANAGER))
           .getFragment();
     }
   }
@@ -169,7 +174,8 @@ public abstract class Operator implements Serializable {
     }
     if (profilingMode == null) {
       LocalFragmentResourceManager lfrm =
-          (LocalFragmentResourceManager) execEnvVars.get(MyriaConstants.EXEC_ENV_VAR_FRAGMENT_RESOURCE_MANAGER);
+          (LocalFragmentResourceManager)
+              execEnvVars.get(MyriaConstants.EXEC_ENV_VAR_FRAGMENT_RESOURCE_MANAGER);
       if (lfrm == null) {
         return ImmutableSet.of();
       }
@@ -184,14 +190,18 @@ public abstract class Operator implements Serializable {
 
   /**
    * Closes this iterator.
-   * 
+   *
    * @throws DbException if any errors occur
    */
   public final void close() throws DbException {
     // Ensures that a future call to next() or nextReady() will fail
     // outputBuffer = null;
     if (LOGGER.isDebugEnabled()) {
-      LOGGER.debug("Operator {} closed, #output TBs: {}, # output tuples: {}", this, numOutputTBs, numOutputTuples);
+      LOGGER.debug(
+          "Operator {} closed, #output TBs: {}, # output tuples: {}",
+          this,
+          numOutputTBs,
+          numOutputTuples);
     }
     open = false;
     eos = true;
@@ -235,11 +245,11 @@ public abstract class Operator implements Serializable {
 
   /**
    * Check if EOS is set.
-   * 
+   *
    * This method is non-blocking.
-   * 
+   *
    * @return if the Operator is at EOS (End of Stream)
-   * 
+   *
    */
   public final boolean eos() {
     return eos;
@@ -302,15 +312,15 @@ public abstract class Operator implements Serializable {
 
   /**
    * Check if currently there's any TupleBatch available for pull.
-   * 
+   *
    * This method is non-blocking.
-   * 
+   *
    * If the thread is interrupted during the processing of nextReady, the interrupt status will be kept.
-   * 
+   *
    * @throws DbException if any problem
-   * 
+   *
    * @return if currently there's output for pulling.
-   * 
+   *
    */
   public final TupleBatch nextReady() throws DbException {
     if (!open) {
@@ -370,9 +380,9 @@ public abstract class Operator implements Serializable {
 
   /**
    * open the operator and do initializations.
-   * 
+   *
    * @param execEnvVars the environment variables of the execution unit.
-   * 
+   *
    * @throws DbException if any error occurs
    */
   public final void open(final Map<String, Object> execEnvVars) throws DbException {
@@ -417,7 +427,7 @@ public abstract class Operator implements Serializable {
 
   /**
    * Mark the end of an iteration.
-   * 
+   *
    * @param eoi the new value of eoi.
    */
   public final void setEOI(final boolean eoi) {
@@ -433,35 +443,33 @@ public abstract class Operator implements Serializable {
 
   /**
    * Do the initialization of this operator.
-   * 
+   *
    * @param execEnvVars execution environment variables
    * @throws Exception if any error occurs
    */
-  protected void init(final ImmutableMap<String, Object> execEnvVars) throws Exception {
-  };
+  protected void init(final ImmutableMap<String, Object> execEnvVars) throws Exception {};
 
   /**
    * Do the clean up, release resources.
-   * 
+   *
    * @throws Exception if any error occurs
    */
-  protected void cleanup() throws Exception {
-  };
+  protected void cleanup() throws Exception {};
 
   /**
    * Generate next output TupleBatch if possible. Return null immediately if currently no output can be generated.
-   * 
+   *
    * Do not block the execution thread in this method, including sleep, wait on locks, etc.
-   * 
+   *
    * @throws Exception if any error occurs
-   * 
+   *
    * @return next ready output TupleBatch. null if either EOS or no output TupleBatch can be generated currently.
    */
   protected abstract TupleBatch fetchNextReady() throws Exception;
 
   /**
    * Explicitly set EOS for this operator.
-   * 
+   *
    * Operators should not be able to unset an already set EOS except reopen it.
    */
   protected final void setEOS() {
@@ -475,7 +483,7 @@ public abstract class Operator implements Serializable {
    * Attempt to produce the {@link Schema} of the tuples generated by this operator. This function must handle cases
    * like <code>null</code> children or arguments, and return <code>null</code> if there is not enough information to
    * produce the schema.
-   * 
+   *
    * @return the {@link Schema} of the tuples generated by this operator, or <code>null</code> if the operator does not
    *         yet have enough information to generate the schema.
    */
@@ -483,7 +491,7 @@ public abstract class Operator implements Serializable {
 
   /**
    * @return return the Schema of the output tuples of this operator.
-   * 
+   *
    */
   public final Schema getSchema() {
     if (schema == null) {
@@ -494,7 +502,7 @@ public abstract class Operator implements Serializable {
 
   /**
    * This method is blocking.
-   * 
+   *
    * @param children the Operators which are to be set as the children(child) of this operator.
    */
   public abstract void setChildren(Operator[] children);
@@ -522,7 +530,7 @@ public abstract class Operator implements Serializable {
 
   /**
    * set op name.
-   * 
+   *
    * @param name op name
    */
   public void setOpName(final String name) {
@@ -538,7 +546,7 @@ public abstract class Operator implements Serializable {
 
   /**
    * get op name.
-   * 
+   *
    * @return op name
    */
   public String getOpName() {
@@ -554,11 +562,41 @@ public abstract class Operator implements Serializable {
 
   /**
    * Get the unique operator id.
-   * 
+   *
    * @return the op id
    */
   @Nullable
   public Integer getOpId() {
     return opId;
+  }
+
+  public String dumpOpStats() {
+    return "";
+  }
+
+  public String schemaStats = null;
+
+  public void genSchemaStats(final Schema schema, final int strlen) {
+    if (schemaStats != null) {
+      return;
+    }
+    int count_int = 0;
+    int count_long = 0;
+    int count_str = 0;
+    int sum_str = 0;
+    for (Type t : schema.getColumnTypes()) {
+      if (t == Type.INT_TYPE) {
+        count_int += 1;
+      }
+      if (t == Type.LONG_TYPE) {
+        count_long += 1;
+      }
+      if (t == Type.STRING_TYPE) {
+        count_str += 1;
+        sum_str += strlen;
+      }
+    }
+    schemaStats =
+        "int " + count_int + " long " + count_long + " str " + count_str + " str_sum " + sum_str;
   }
 }

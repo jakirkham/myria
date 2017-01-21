@@ -14,17 +14,17 @@ import javax.ws.rs.core.Response.Status;
 
 import edu.washington.escience.myria.parallel.Server;
 import edu.washington.escience.myria.parallel.SocketInfo;
+import edu.washington.escience.myria.util.IPCUtils;
 
 /**
  * This is the class that handles API calls that return workers.
- * 
+ *
  */
 @Path("/workers")
 @Produces(MyriaApiConstants.JSON_UTF_8)
 public final class WorkerCollection {
   /** The Myria server running on the master. */
-  @Context
-  private Server server;
+  @Context private Server server;
 
   /**
    * @return the list of identifiers of workers that are currently alive.
@@ -41,7 +41,25 @@ public final class WorkerCollection {
   @GET
   @Path("/heartbeat")
   public Response getAliveWorkersWithLastHeartbeat() {
-    return Response.ok(server.getAliveWorkersWithLastHeartbeat()).cacheControl(MyriaApiUtils.doNotCache()).build();
+    return Response.ok(server.getAliveWorkersWithLastHeartbeat())
+        .cacheControl(MyriaApiUtils.doNotCache())
+        .build();
+  }
+
+  /**
+   * @param workerId identifier of the worker.
+   * @return the hostname and port number of the specified worker.
+   */
+  @GET
+  @Path("/worker-sysgc-{workerId:\\d+}")
+  public Response callWorkerSysGC(@PathParam("workerId") final int workerId) {
+    SocketInfo workerInfo = server.getWorkers().get(workerId);
+    if (workerInfo == null) {
+      /* Not found, throw a 404 (Not Found) */
+      throw new MyriaApiException(Status.NOT_FOUND, "Worker " + workerId);
+    }
+    server.getIPCConnectionPool().sendShortMessage(workerId, IPCUtils.CONTROL_SYSTEM_GC);
+    return Response.ok().cacheControl(MyriaApiUtils.doNotCache()).build();
   }
 
   /**
