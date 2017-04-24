@@ -150,7 +150,7 @@ public final class MyriaUtils {
   }
   /**
    * This function is called by DownloadBlob expression. It cannot throw an exception as it
-   * is a complied expression, so, it returns null if there is an error in retriving the binary data.
+   * is a compiled expression, so, it returns null if there is an error in retrieving the binary data.
    * @param filename uri of the binary data.
    * @return Binary data in ByteBuffer format.
    */
@@ -164,5 +164,12 @@ public final class MyriaUtils {
       LOGGER.debug(e.getMessage());
       return null;
     }
+  }
+
+  public static boolean isTrue(Boolean b) {
+    if (b != null && b) {
+      return true;
+    }
+    return false;
   }
 }
