@@ -6,14 +6,12 @@ import java.util.List;
 import javax.annotation.Nonnull;
 
 import com.google.common.base.Preconditions;
-import com.google.common.collect.ImmutableMap;
 
 import edu.washington.escience.myria.DbException;
 import edu.washington.escience.myria.Schema;
 import edu.washington.escience.myria.column.Column;
 import edu.washington.escience.myria.storage.ConcatColumn;
 import edu.washington.escience.myria.storage.TupleBatch;
-import edu.washington.escience.myria.storage.TupleUtils;
 
 /**
  * An abstract class used to make those specialized operators that only consume tuples simpler to implement.
