@@ -323,6 +323,7 @@ public final class MyriaDriverLauncher {
       final String nativeLibPath = commandLineInjector.getNamedInstance(NativeLibPath.class);
       final Configuration globalConf = getMyriaGlobalConf(configPath);
       final String serializedGlobalConf = new AvroConfigurationSerializer().toString(globalConf);
+      LOGGER.debug("Global configuration:\n{}", serializedGlobalConf);
       final Configuration globalConfWrapper =
           tang.newConfigurationBuilder()
               .bindNamedParameter(SerializedGlobalConf.class, serializedGlobalConf)
@@ -338,7 +339,6 @@ public final class MyriaDriverLauncher {
                   new String[] {javaLibPath},
                   new String[] {nativeLibPath}),
               globalConfWrapper);
-
       return tang.newInjector(getRuntimeConf(runtimeClassName), getClientConf())
           .getInstance(MyriaDriverLauncher.class)
           .run(driverConf);
