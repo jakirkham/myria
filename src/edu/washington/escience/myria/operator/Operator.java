@@ -17,6 +17,7 @@ import edu.washington.escience.myria.DbException;
 import edu.washington.escience.myria.MyriaConstants;
 import edu.washington.escience.myria.MyriaConstants.ProfilingMode;
 import edu.washington.escience.myria.Schema;
+import edu.washington.escience.myria.Type;
 import edu.washington.escience.myria.functions.PythonFunctionRegistrar;
 import edu.washington.escience.myria.parallel.LocalFragment;
 import edu.washington.escience.myria.parallel.LocalFragmentResourceManager;
@@ -594,5 +595,35 @@ public abstract class Operator implements Serializable {
   @Nullable
   public Integer getOpId() {
     return opId;
+  }
+
+  public String dumpOpStats() {
+    return "";
+  }
+
+  public String schemaStats = null;
+
+  public void genSchemaStats(final Schema schema, final int strlen) {
+    if (schemaStats != null) {
+      return;
+    }
+    int count_int = 0;
+    int count_long = 0;
+    int count_str = 0;
+    int sum_str = 0;
+    for (Type t : schema.getColumnTypes()) {
+      if (t == Type.INT_TYPE) {
+        count_int += 1;
+      }
+      if (t == Type.LONG_TYPE) {
+        count_long += 1;
+      }
+      if (t == Type.STRING_TYPE) {
+        count_str += 1;
+        sum_str += strlen;
+      }
+    }
+    schemaStats =
+        "int " + count_int + " long " + count_long + " str " + count_str + " str_sum " + sum_str;
   }
 }

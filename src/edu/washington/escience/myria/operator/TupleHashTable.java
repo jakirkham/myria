@@ -1,12 +1,14 @@
 package edu.washington.escience.myria.operator;
 
 import java.io.Serializable;
+import java.util.List;
 
 import com.gs.collections.api.iterator.IntIterator;
 import com.gs.collections.impl.list.mutable.primitive.IntArrayList;
 import com.gs.collections.impl.map.mutable.primitive.IntObjectHashMap;
 
 import edu.washington.escience.myria.Schema;
+import edu.washington.escience.myria.Type;
 import edu.washington.escience.myria.storage.MutableTupleBuffer;
 import edu.washington.escience.myria.storage.ReadableTable;
 import edu.washington.escience.myria.storage.TupleBatch;
@@ -26,6 +28,11 @@ public final class TupleHashTable implements Serializable {
   private transient MutableTupleBuffer data;
   /** Key column indices. */
   private final int[] keyColumns;
+  public String name;
+  public int[] triggers = new int[] {};
+  public int intc = 0, longc = 0, strc = 0;
+  public long strsum = 0;
+  public List<Type> types;
 
   /**
    * @param schema schema
@@ -35,6 +42,18 @@ public final class TupleHashTable implements Serializable {
     this.keyColumns = keyColumns;
     data = new MutableTupleBuffer(schema);
     keyHashCodesToIndices = new IntObjectHashMap<IntArrayList>();
+    types = schema.getColumnTypes();
+    for (Type t : types) {
+      if (t == Type.INT_TYPE || t == Type.FLOAT_TYPE) {
+        intc += 1;
+      }
+      if (t == Type.LONG_TYPE || t == Type.DOUBLE_TYPE) {
+        longc += 1;
+      }
+      if (t == Type.STRING_TYPE) {
+        strc += 1;
+      }
+    }
   }
 
   /**
@@ -67,6 +86,12 @@ public final class TupleHashTable implements Serializable {
     return ret;
   }
 
+  public int getIndex(final ReadableTable tb, final int[] key, final int row) {
+    IntArrayList ret = getIndices(tb, key, row);
+    if (ret.size() == 0) return -1;
+    return ret.get(0);
+  }
+
   /**
    * Replace tuples in the hash table with the input tuple if they have the same key.
    *
@@ -83,6 +108,11 @@ public final class TupleHashTable implements Serializable {
     while (iter.hasNext()) {
       int i = iter.next();
       for (int j = 0; j < data.numColumns(); ++j) {
+        if (types.get(j) == Type.STRING_TYPE) {
+          String ot = tb.getString(j, i);
+          String nt = tb.getString(j, row);
+          strsum = strsum - ot.length() + nt.length();
+        }
         data.replace(j, i, tb.getDataColumns().get(j), row);
       }
     }
@@ -106,11 +136,25 @@ public final class TupleHashTable implements Serializable {
     indices.add(numTuples());
     if (keyOnly) {
       for (int i = 0; i < keyColumns.length; ++i) {
+        if (types.get(i) == Type.STRING_TYPE) {
+          strsum += tb.getString(keyColumns[i], row).length();
+        }
         data.put(i, tb.asColumn(keyColumns[i]), row);
       }
     } else {
       for (int i = 0; i < data.numColumns(); ++i) {
-        data.put(i, tb.asColumn(i), row);
+        if (types.get(i) == Type.STRING_TYPE) {
+          strsum += tb.getString(i, row).length();
+        }
+        data.put(i, tb.asColumn(keyColumns[i]), row);
+      }
+    }
+    if (triggers != null) {
+      for (int t : triggers) {
+        if (t == numTuples()) {
+          System.out.println("sysgcopstats\t" + dumpStats());
+          System.gc();
+        }
       }
     }
   }
@@ -128,5 +172,26 @@ public final class TupleHashTable implements Serializable {
   public void cleanup() {
     keyHashCodesToIndices = new IntObjectHashMap<IntArrayList>();
     data = new MutableTupleBuffer(data.getSchema());
+    // keyToIndices = new IntObjectHashMap<IntArrayList>();
+    // data = new MutableTupleBuffer(data.getSchema());
+  }
+
+  public String dumpStats() {
+    int n = numTuples();
+    return name
+        + " "
+        + numTuples()
+        + " "
+        + keyHashCodesToIndices.size()
+        + " "
+        + (n == 0 ? 0 : longc)
+        + " "
+        + (n == 0 ? 0 : strc)
+        + " "
+        + (n == 0 ? 0 : strsum / n);
+  }
+
+  public Schema getSchema() {
+    return data.getSchema();
   }
 }

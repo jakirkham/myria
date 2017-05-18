@@ -1,10 +1,12 @@
 package edu.washington.escience.myria.parallel;
 
 import java.io.IOException;
+import java.io.PrintWriter;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Queue;
 import java.util.Set;
+import java.util.TimerTask;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
@@ -12,6 +14,8 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Lock;
 
 import javax.annotation.Nonnull;
@@ -101,9 +105,6 @@ import edu.washington.escience.myria.util.concurrent.ThreadAffinityFixedRoundRob
  * next query plan
  *
  */
-/**
- *
- */
 @Unit
 public final class Worker implements Task, TaskMessageSource {
 
@@ -170,6 +171,11 @@ public final class Worker implements Task, TaskMessageSource {
                   if (LOGGER.isDebugEnabled()) {
                     LOGGER.debug("Trigger System GC");
                   }
+                  String ret = "sysgcopstats";
+                  for (WorkerSubQuery wqp : executingSubQueries.values()) {
+                    ret += wqp.dumpOpStats();
+                  }
+                  System.out.println(ret);
                   System.gc();
                   break;
                 default:
@@ -271,6 +277,27 @@ public final class Worker implements Task, TaskMessageSource {
 
   private Optional<TaskMessage> dequeueDriverMessage() {
     return Optional.ofNullable(pendingDriverMessages.poll());
+  }
+
+  class OpStatsReporter extends TimerTask {
+    @Override
+    public synchronized void run() {
+      String ret = "opstats";
+      for (WorkerSubQuery wqp : executingSubQueries.values()) {
+        ret += wqp.dumpOpStats();
+      }
+      // if (ret.length() > "opstats\t".length()) {
+      // System.out.println("opstatsreporter " + ret);
+      try {
+        PrintWriter w = new PrintWriter("opstats");
+        w.write(ret);
+        w.close();
+        // Process p = Runtime.getRuntime().exec("mv opstats_bak opstats");
+        // p.waitFor();
+      } catch (Exception e) {
+        e.printStackTrace();
+      }
+    }
   }
 
   private void enqueueDriverMessage(@Nonnull final TransportMessage msg) {
@@ -792,8 +819,6 @@ public final class Worker implements Task, TaskMessageSource {
     if (getQueryExecutionMode() == QueryExecutionMode.NON_BLOCKING) {
       int numCPU = Runtime.getRuntime().availableProcessors();
       queryExecutor =
-          // new ThreadPoolExecutor(numCPU, numCPU, 0L, TimeUnit.MILLISECONDS, new
-          // LinkedBlockingQueue<Runnable>(),
           // new RenamingThreadFactory("Nonblocking query executor"));
           new ThreadAffinityFixedRoundRobinExecutionPool(
               numCPU, new RenamingThreadFactory("Nonblocking query executor"));
@@ -806,7 +831,18 @@ public final class Worker implements Task, TaskMessageSource {
         Executors.newCachedThreadPool(new RenamingThreadFactory("Control/Query message processor"));
     messageProcessingExecutor.submit(injector.getInstance(QueryMessageProcessor.class));
     messageProcessingExecutor.submit(injector.getInstance(ControlMessageProcessor.class));
+    messageProcessingExecutor.submit(new QueryMessageProcessor());
+    messageProcessingExecutor.submit(new ControlMessageProcessor());
+    // messageProcessingExecutor.submit(new ListenToOutside());
+    // Periodically detect if the server (i.e., coordinator)
+    // is still running. IF the server goes down, the
+    // worker will stop itself
+    scheduledTaskExecutor =
+        Executors.newScheduledThreadPool(1, new RenamingThreadFactory("Worker global timer"));
+    scheduledTaskExecutor.scheduleAtFixedRate(new OpStatsReporter(), 0, 10, TimeUnit.MILLISECONDS);
   }
+
+  ScheduledExecutorService scheduledTaskExecutor;
 
   /**
    * @return This worker's ID.

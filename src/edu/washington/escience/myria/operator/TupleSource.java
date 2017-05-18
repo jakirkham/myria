@@ -1,6 +1,3 @@
-/**
- *
- */
 package edu.washington.escience.myria.operator;
 
 import java.io.IOException;
@@ -14,13 +11,14 @@ import edu.washington.escience.myria.io.DataSource;
 import edu.washington.escience.myria.storage.TupleBatch;
 
 /**
+ * This class creates a LeafOperator from a batch of tuples. Useful for testing.
+ *
  *
  */
-public class TupleSource extends LeafOperator {
+public final class TupleSource extends LeafOperator {
 
   /** Required for Java serialization. */
   private static final long serialVersionUID = 1L;
-
   /** The class that will serialize the tuple batches. */
   private final TupleReader tupleReader;
   private final DataSource dataSource;
@@ -31,6 +29,15 @@ public class TupleSource extends LeafOperator {
   public TupleSource(final TupleReader tupleReader, final DataSource dataSource) {
     this.tupleReader = tupleReader;
     this.dataSource = dataSource;
+  }
+
+  @Override
+  protected void cleanup() throws DbException {
+    try {
+      tupleReader.close();
+    } catch (IOException e) {
+      throw new DbException(e);
+    }
   }
 
   @Override
@@ -50,14 +57,5 @@ public class TupleSource extends LeafOperator {
   @Override
   protected Schema generateSchema() {
     return tupleReader.getSchema();
-  }
-
-  @Override
-  protected void cleanup() throws DbException {
-    try {
-      tupleReader.close();
-    } catch (IOException e) {
-      throw new DbException(e);
-    }
   }
 }

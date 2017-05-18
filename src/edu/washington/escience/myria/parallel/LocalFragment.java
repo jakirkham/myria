@@ -205,6 +205,12 @@ public final class LocalFragment {
               synchronized (executionLock) {
                 LocalFragment.this.executeActually();
               }
+            } catch (Error e) {
+              if (e instanceof OutOfMemoryError) {
+                JVMUtils.shutdownVM(e);
+              }
+              LOGGER.error("Unexpected Error: ", e);
+              throw e;
             } catch (RuntimeException e) {
               LOGGER.error("Unexpected RuntimeException: ", e);
               throw e;
@@ -928,6 +934,15 @@ public final class LocalFragment {
     for (Operator child : op.getChildren()) {
       ret = Math.max(ret, getMaxOpId(child));
     }
+    return ret;
+  }
+
+  public String dumpOpStats(final Operator op) {
+    String ret = "";
+    for (Operator o : op.getChildren()) {
+      ret += dumpOpStats(o);
+    }
+    ret += op.dumpOpStats();
     return ret;
   }
 }

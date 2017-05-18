@@ -1,7 +1,12 @@
 package edu.washington.escience.myria.operator;
 
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+
+import org.apache.commons.lang.ArrayUtils;
 
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableList;
@@ -13,6 +18,7 @@ import edu.washington.escience.myria.DbException;
 import edu.washington.escience.myria.MyriaConstants;
 import edu.washington.escience.myria.Schema;
 import edu.washington.escience.myria.Type;
+import edu.washington.escience.myria.column.Column;
 import edu.washington.escience.myria.parallel.QueryExecutionMode;
 import edu.washington.escience.myria.storage.MutableTupleBuffer;
 import edu.washington.escience.myria.storage.TupleBatch;
@@ -30,13 +36,13 @@ public final class SymmetricHashJoin extends BinaryOperator {
   /** The names of the output columns. */
   private final ImmutableList<String> outputColumns;
   /** The column indices for comparing of the left child. */
-  private final int[] leftCompareColumns;
+  private int[] leftCompareColumns;
   /** The column indices for comparing of the right child. */
-  private final int[] rightCompareColumns;
+  private int[] rightCompareColumns;
   /** Which columns in the left child are to be output. */
-  private final int[] leftAnswerColumns;
+  private int[] leftAnswerColumns;
   /** Which columns in the right child are to be output. */
-  private final int[] rightAnswerColumns;
+  private int[] rightAnswerColumns;
   /** The buffer holding the valid tuples from left. */
   private transient TupleHashTable leftHashTable;
   /** The buffer holding the valid tuples from right. */
@@ -52,6 +58,7 @@ public final class SymmetricHashJoin extends BinaryOperator {
   private boolean setSemanticsLeft = false;
   /** if the hash table of the right child should use set semantics. */
   private boolean setSemanticsRight = false;
+  public int[] triggers = new int[] {};
 
   /**
    * Construct an SymmetricHashJoin operator. It returns the specified columns from both children when the corresponding
@@ -143,11 +150,17 @@ public final class SymmetricHashJoin extends BinaryOperator {
 
   @Override
   protected Schema generateSchema() {
-    final Schema leftSchema = getLeft().getSchema();
+    Schema leftSchema = getLeft().getSchema();
+    if (leftHashTable != null) {
+      leftSchema = leftHashTable.getSchema();
+    }
     if (leftSchema == null) {
       return null;
     }
-    final Schema rightSchema = getRight().getSchema();
+    Schema rightSchema = getRight().getSchema();
+    if (rightHashTable != null) {
+      rightSchema = rightHashTable.getSchema();
+    }
     if (rightSchema == null) {
       return null;
     }
@@ -162,7 +175,8 @@ public final class SymmetricHashJoin extends BinaryOperator {
       Type rightType = rightSchema.getColumnType(rightIndex);
       Preconditions.checkState(
           leftType == rightType,
-          "column types do not match for join at index %s: left column type %s [%s] != right column type %s [%s]",
+          "column types do not match for join op %s at index %s: left column type %s [%s] != right column type %s [%s]",
+          getOpId() + "",
           i,
           leftIndex,
           leftType,
@@ -218,8 +232,8 @@ public final class SymmetricHashJoin extends BinaryOperator {
 
   @Override
   protected void cleanup() throws DbException {
-    leftHashTable = null;
-    rightHashTable = null;
+    // leftHashTable.cleanup();
+    // rightHashTable.cleanup();
     ans = null;
   }
 
@@ -410,14 +424,87 @@ public final class SymmetricHashJoin extends BinaryOperator {
     return nexttb;
   }
 
+  private List<Integer> getUsedCols(
+      final Schema schema, final int[] compareIndx, final int[] answerColumns) {
+    List<Integer> usedCols = new ArrayList<Integer>();
+    for (int i : compareIndx) {
+      usedCols.add(i);
+    }
+    for (int i : answerColumns) {
+      if (!usedCols.contains(i)) {
+        usedCols.add(i);
+      }
+    }
+    return usedCols;
+  }
+
+  private TupleHashTable createSlicedHashTable(
+      final Schema schema, final int[] compareIndx, final int[] answerColumns) {
+    int[] usedCols =
+        ArrayUtils.toPrimitive(
+            getUsedCols(schema, compareIndx, answerColumns).toArray(new Integer[] {}));
+    return new TupleHashTable(
+        schema.getSubSchema(usedCols), MyriaArrayUtils.range(0, compareIndx.length));
+  }
+
+  private Map<Integer, Integer> getInHashTableColumns(
+      final Schema schema, final int[] compareIndx, final int[] answerColumns) {
+    List<Integer> usedCols = getUsedCols(schema, compareIndx, answerColumns);
+    Map<Integer, Integer> cols = new HashMap<Integer, Integer>();
+    for (int c : compareIndx) {
+      cols.put(usedCols.indexOf(c), c);
+    }
+    for (int c : answerColumns) {
+      cols.put(usedCols.indexOf(c), c);
+    }
+    return cols;
+  }
+
+  Map<Integer, Integer> leftInHashTableColumns, rightInHashTableColumns;
+
+  private int[] getNewIndexMapping(final int[] oldIndex, final Map<Integer, Integer> mapping) {
+    int[] ret = new int[oldIndex.length];
+    for (int i = 0; i < oldIndex.length; ++i) {
+      for (int k : mapping.keySet()) {
+        if (mapping.get(k) == oldIndex[i]) {
+          ret[i] = k;
+          break;
+        }
+      }
+    }
+    return ret;
+  }
+
   @Override
   public void init(final ImmutableMap<String, Object> execEnvVars) throws DbException {
-    leftHashTable = new TupleHashTable(getLeft().getSchema(), leftCompareColumns);
-    rightHashTable = new TupleHashTable(getRight().getSchema(), rightCompareColumns);
+    leftHashTable =
+        createSlicedHashTable(getLeft().getSchema(), leftCompareColumns, leftAnswerColumns);
+    rightHashTable =
+        createSlicedHashTable(getRight().getSchema(), rightCompareColumns, rightAnswerColumns);
+    leftInHashTableColumns =
+        getInHashTableColumns(getLeft().getSchema(), leftCompareColumns, leftAnswerColumns);
+    rightInHashTableColumns =
+        getInHashTableColumns(getRight().getSchema(), rightCompareColumns, rightAnswerColumns);
+    leftCompareColumns = getNewIndexMapping(leftCompareColumns, leftInHashTableColumns);
+    rightCompareColumns = getNewIndexMapping(rightCompareColumns, rightInHashTableColumns);
+    leftAnswerColumns = getNewIndexMapping(leftAnswerColumns, leftInHashTableColumns);
+    rightAnswerColumns = getNewIndexMapping(rightAnswerColumns, rightInHashTableColumns);
+    leftHashTable.triggers = triggers;
+    rightHashTable.triggers = triggers;
+    leftHashTable.name = "op" + getOpId() + "left";
+    rightHashTable.name = "op" + getOpId() + "right";
     ans = new TupleBatchBuffer(getSchema());
     nonBlocking =
         (QueryExecutionMode) execEnvVars.get(MyriaConstants.EXEC_ENV_VAR_EXECUTION_MODE)
             == QueryExecutionMode.NON_BLOCKING;
+    if (triggers != null) {
+      for (int t : triggers) {
+        if (t == 0) {
+          System.out.println("sysgcopstats\t" + leftHashTable.dumpStats());
+          System.gc();
+        }
+      }
+    }
   }
 
   /**
@@ -429,15 +516,30 @@ public final class SymmetricHashJoin extends BinaryOperator {
    * @param tb the incoming TupleBatch for processing join.
    * @param fromLeft if the tb is from left.
    */
-  protected void processChildTB(final TupleBatch tb, final boolean fromLeft) {
+  protected void processChildTB(TupleBatch tb, final boolean fromLeft) {
+    List<Column<?>> columns = new ArrayList<Column<?>>();
+    if (fromLeft) {
+      for (int i : leftInHashTableColumns.keySet()) {
+        columns.add(tb.getDataColumns().get(leftInHashTableColumns.get(i)));
+      }
+      tb = new TupleBatch(leftHashTable.getSchema(), columns);
+    } else {
+      for (int i : rightInHashTableColumns.keySet()) {
+        columns.add(tb.getDataColumns().get(rightInHashTableColumns.get(i)));
+      }
+      tb = new TupleBatch(rightHashTable.getSchema(), columns);
+    }
+
     final Operator left = getLeft();
     final Operator right = getRight();
     /* delete one child's hash table if the other reaches EOS. */
     if (left.eos()) {
       rightHashTable = null;
+      // rightHashTable = null;
     }
     if (right.eos()) {
       leftHashTable = null;
+      // leftHashTable = null;
     }
 
     final boolean useSetSemantics = fromLeft && setSemanticsLeft || !fromLeft && setSemanticsRight;
@@ -463,6 +565,7 @@ public final class SymmetricHashJoin extends BinaryOperator {
       if (buildHashTable != null) {
         addToHashTable(tb, buildCompareColumns, row, buildHashTable, useSetSemantics);
       }
+      addToHashTable(tb, buildCompareColumns, row, buildHashTable, useSetSemantics);
     }
   }
 
@@ -514,5 +617,22 @@ public final class SymmetricHashJoin extends BinaryOperator {
     LEFT_EOS,
     /** Pull from the right child until it reaches EOS. */
     RIGHT_EOS
+  }
+
+  /**
+   * Set the pull order.
+   *
+   * @param order the pull order.
+   */
+  public void setPullOrder(final JoinPullOrder order) {
+    this.order = order;
+  }
+
+  @Override
+  public String dumpOpStats() {
+    if (leftHashTable == null || rightHashTable == null) {
+      return "";
+    }
+    return "\t" + leftHashTable.dumpStats() + "\t" + rightHashTable.dumpStats();
   }
 }

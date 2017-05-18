@@ -18,8 +18,8 @@ import edu.washington.escience.myria.expression.evaluate.GenericEvaluator;
 import edu.washington.escience.myria.expression.evaluate.PythonUDFEvaluator;
 import edu.washington.escience.myria.functions.PythonFunctionRegistrar;
 import edu.washington.escience.myria.operator.Operator;
+import edu.washington.escience.myria.operator.TupleHashTable;
 import edu.washington.escience.myria.operator.UnaryOperator;
-import edu.washington.escience.myria.operator.UniqueTupleHashTable;
 import edu.washington.escience.myria.operator.agg.PrimitiveAggregator.AggregationOp;
 import edu.washington.escience.myria.storage.TupleBatch;
 import edu.washington.escience.myria.storage.TupleBatchBuffer;
@@ -35,13 +35,16 @@ public class Aggregate extends UnaryOperator {
   private static final long serialVersionUID = 1L;
 
   /** The hash table containing groups and states. */
-  protected transient UniqueTupleHashTable groupStates;
+  //protected transient UniqueTupleHashTable groupStates;
+  protected transient TupleHashTable groupStates;
   /** Factories to make the Aggregators. **/
   private final AggregatorFactory[] factories;
   /** Aggregators of the internal state. */
   protected List<Aggregator> internalAggs;
   /** Expressions that emit output. */
   protected List<GenericEvaluator> emitEvals;
+  /** Aggregators that emit output. */
+  protected List<Aggregator> emitAggs;
   /** Group fields. Empty array means no grouping. **/
   protected final int[] gfields;
   /** Buffer for restoring results. */
@@ -63,8 +66,8 @@ public class Aggregate extends UnaryOperator {
 
   @Override
   protected void cleanup() throws DbException {
-    groupStates.cleanup();
-    resultBuffer.clear();
+    // groupStates.cleanup();
+    // resultBuffer.clear();
   }
 
   /**
@@ -80,7 +83,7 @@ public class Aggregate extends UnaryOperator {
     TupleBatch tb = child.nextReady();
     while (tb != null) {
       for (int row = 0; row < tb.numTuples(); ++row) {
-        int index = groupStates.getIndex(tb, gfields, row);
+        int index = groupStates.getIndices(tb, gfields, row).get(0);
         if (index == -1) {
           groupStates.addTuple(tb, gfields, row, true);
           int offset = gfields.length;
@@ -168,7 +171,7 @@ public class Aggregate extends UnaryOperator {
    */
   @Override
   protected Schema generateSchema() {
-    if (getChild() == null) {
+    if (getChild() == null || getChild().getSchema() == null) {
       return null;
     }
     Schema inputSchema = getChild().getSchema();
@@ -216,8 +219,19 @@ public class Aggregate extends UnaryOperator {
       }
     }
     groupStates =
-        new UniqueTupleHashTable(
+        new TupleHashTable(
             Schema.merge(groupingSchema, stateSchema), MyriaArrayUtils.range(0, gfields.length));
+    //new UniqueTupleHashTable(
+    //    Schema.merge(groupingSchema, stateSchema), MyriaArrayUtils.range(0, gfields.length));
     resultBuffer = new TupleBatchBuffer(getSchema());
+    groupStates.name = "op" + getOpId();
+  }
+
+  @Override
+  public String dumpOpStats() {
+    if (groupStates == null) {
+      return "";
+    }
+    return "\t" + groupStates.dumpStats();
   }
 };
